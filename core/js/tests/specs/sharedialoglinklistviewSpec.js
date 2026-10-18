@@ -125,6 +125,40 @@ describe('OC.Share.ShareDialogLinkListView', function() {
 		it('renders the create button', function() {
 			expect(view.$('.addLink').length).toEqual(1);
 		});
+		it('copies the link with the Clipboard API when it is available', function() {
+			var protocolStub = sinon.stub(OC, 'getProtocol').returns('https');
+			var hostStub = sinon.stub(OC, 'getHost').returns('example.org');
+			var webrootStub = sinon.stub(OC, 'getRootPath').returns('/owncloud');
+			var apiStub = sinon.stub(view, '_hasClipboardApi').returns(true);
+			var writeStub = sinon.stub(view, '_writeToClipboard').returns(Promise.resolve());
+
+			view.render();
+			expect(view._clipboard).toEqual(null);
+			view.$('.link-entry:eq(0) .clipboardButton').click();
+
+			expect(writeStub.calledOnce).toEqual(true);
+			expect(writeStub.getCall(0).args[0])
+				.toEqual('https://example.org/owncloud/index.php/s/tehtokenz');
+
+			writeStub.restore();
+			apiStub.restore();
+			webrootStub.restore();
+			hostStub.restore();
+			protocolStub.restore();
+		});
+		it('falls back to clipboard.js when the Clipboard API is not available', function() {
+			var apiStub = sinon.stub(view, '_hasClipboardApi').returns(false);
+			var writeStub = sinon.stub(view, '_writeToClipboard');
+
+			view.render();
+			expect(view._clipboard).not.toEqual(null);
+			view.$('.link-entry:eq(0) .clipboardButton').click();
+
+			expect(writeStub.called).toEqual(false);
+
+			writeStub.restore();
+			apiStub.restore();
+		});
 		it('does not render empty message when shares exist', function() {
 			expect(view.$('.empty-message').length).toEqual(0);
 		});

@@ -81,8 +81,12 @@
 		/** @type {Function} **/
 		_template: undefined,
 
+		/** @type {ClipboardJS} clipboard.js fallback, only used without the Clipboard API **/
+		_clipboard: null,
+
 		events: {
 			'click .addLink': 'onAddButtonClick',
+			'click .clipboardButton': 'onCopyButtonClick',
 			'click .editLink': 'onEditButtonClick',
 			'click .removeLink': 'onRemoveButtonClick',
 			'click .shareLink': 'onShareButtonClick'
@@ -250,44 +254,101 @@
 
 			this.$el.find('[title]').tooltip();
 
-			var clipboard = new ClipboardJS('#' + this.id + ' .clipboardButton');
-			clipboard.on('success', function (e) {
-				var $input = $(e.trigger);
-				$input.tooltip({
-					placement: 'bottom',
-					trigger: 'manual',
-					title: t('core', 'Copied!')
+			if (this._clipboard) {
+				this._clipboard.destroy();
+				this._clipboard = null;
+			}
+			if (!this._hasClipboardApi()) {
+				// clipboard.js copies through document.execCommand('copy') from the
+				// hidden link input. Chromium copies an empty string from an input whose
+				// content box has no width, so this is only the fallback for insecure
+				// contexts and old browsers without the Clipboard API.
+				var self = this;
+				this._clipboard = new ClipboardJS('#' + this.id + ' .clipboardButton');
+				this._clipboard.on('success', function (e) {
+					self._showCopyFeedback($(e.trigger), t('core', 'Copied!'));
 				});
-				$input.tooltip('show');
-				_.delay(function () {
-					$input.tooltip('hide');
-				}, 3000);
-			});
-			clipboard.on('error', function (e) {
-				var $input = $(e.trigger);
-				var actionMsg = '';
-				if (bowser.ios) {
-					actionMsg = t('core', 'Not supported!');
-				} else if (bowser.mac) {
-					actionMsg = t('core', 'Press ⌘-C to copy.');
-				} else {
-					actionMsg = t('core', 'Press Ctrl-C to copy.');
-				}
-
-				$input.tooltip({
-					placement: 'bottom',
-					trigger: 'manual',
-					title: actionMsg
+				this._clipboard.on('error', function (e) {
+					self._showCopyFeedback($(e.trigger), self._copyErrorMessage());
 				});
-				$input.tooltip('show');
-				_.delay(function () {
-					$input.tooltip('hide');
-				}, 3000);
-			});
+			}
 
 			this.delegateEvents();
 
 			return this;
+		},
+
+		/**
+		 * Whether the asynchronous Clipboard API can be used. It only exists in
+		 * secure contexts (https or localhost).
+		 *
+		 * @returns {boolean}
+		 * @private
+		 */
+		_hasClipboardApi: function () {
+			return !!(window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText);
+		},
+
+		/**
+		 * @param {string} text
+		 * @returns {Promise}
+		 * @private
+		 */
+		_writeToClipboard: function (text) {
+			return navigator.clipboard.writeText(text);
+		},
+
+		/**
+		 * Copies the public link with the Clipboard API. Without it the click is
+		 * left to the clipboard.js instance created in render().
+		 *
+		 * @param {Event} ev
+		 */
+		onCopyButtonClick: function (ev) {
+			if (!this._hasClipboardApi()) {
+				return;
+			}
+			var $button = $(ev.currentTarget);
+			var link = this.$($button.attr('data-clipboard-target')).val();
+			var self = this;
+			this._writeToClipboard(link).then(function () {
+				self._showCopyFeedback($button, t('core', 'Copied!'));
+			}, function () {
+				self._showCopyFeedback($button, self._copyErrorMessage());
+			});
+		},
+
+		/**
+		 * @returns {string}
+		 * @private
+		 */
+		_copyErrorMessage: function () {
+			if (bowser.ios) {
+				return t('core', 'Not supported!');
+			}
+			if (bowser.mac) {
+				return t('core', 'Press ⌘-C to copy.');
+			}
+			return t('core', 'Press Ctrl-C to copy.');
+		},
+
+		/**
+		 * Shows a message in the copy button's tooltip for a moment.
+		 *
+		 * @param {jQuery} $button
+		 * @param {string} message
+		 * @private
+		 */
+		_showCopyFeedback: function ($button, message) {
+			var originalTitle = $button.attr('data-original-title');
+			$button.attr('data-original-title', message);
+			$button.tooltip('show');
+			_.delay(function () {
+				$button.tooltip('hide');
+				if (originalTitle !== undefined) {
+					$button.attr('data-original-title', originalTitle);
+				}
+			}, 3000);
 		},
 
 		/**

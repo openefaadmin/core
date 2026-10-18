@@ -1,0 +1,13 @@
+Bugfix: Copy public links with the Clipboard API instead of execCommand
+
+The "Copy to clipboard" button of a public link in the sharing panel copied the
+link from an invisible input (a 1px box with the input at width 80%) through
+clipboard.js, which uses document.execCommand("copy"). Chromium copies an empty
+string from a text input whose content box has zero width, so as soon as a theme
+sized that input with box-sizing: border-box the button silently put nothing on
+the clipboard. The button now uses the asynchronous Clipboard API where it is
+available (secure contexts) and keeps clipboard.js only as the fallback. The
+fallback instance is no longer created again on every render, and the feedback
+tooltip now shows the "Copied!" message instead of the button title.
+
+https://github.com/owncloud/core/pull/XXXXX
